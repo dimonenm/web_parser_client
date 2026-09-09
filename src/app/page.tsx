@@ -1,68 +1,65 @@
-import Image from "next/image";
 import styles from "./page.module.css";
 
 export default function Home() {
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>
-            To get started, edit the{" "}
-            <code className={styles.code}>page.tsx</code> file.
-          </h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
+    <div className={styles.container}>
+      {/* Header */}
+      <header className={styles.header}>
+        <a href="/" className={styles.logo}>
+          <div className={styles.logo-icon}>P</div>
+          <span className={styles.logo-text}>Pixnoy</span>
+        </a>
+        
+        <nav className={styles.nav}>
+          <a href="/popular" className={styles.nav-link}>Popular</a>
+          <a href="/top-instagram" className={styles.nav-link}>Top Instagram</a>
+          
+          <div className={styles.language-selector}>
+            <svg 
+              className={styles.globe-icon} 
+              viewBox="0 0 24 24" 
+              fill="none" 
+              stroke="currentColor" 
+              strokeWidth="2"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
+              <circle cx="12" cy="12" r="10" />
+              <path d="M2 12h20" />
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+            </svg>
+            <span>English</span>
+          </div>
+        </nav>
+      </header>
+
+      {/* Main Content */}
+      <main className={styles.main-content}>
+        <h1 className={styles.title}>Instagram viewer and downloader</h1>
+        <p className={styles.subtitle}>
+          Anonymously view and download Instagram photos and videos from profiles, 
+          posts and stories without login.
+        </p>
+
+        {/* Search Form */}
+        <form className={styles.search-form} onSubmit={(e) => e.preventDefault()}>
+          <input 
+            type="text" 
+            className={styles.search-input}
+            placeholder="Search or paste the Instagram URL"
+          />
+          <button type="submit" className={styles.search-button}>
+            <svg 
+              className={styles.search-icon} 
+              viewBox="0 0 24 24" 
+              fill="none" 
+              stroke="currentColor" 
+              strokeWidth="2"
             >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.35-4.35" />
+            </svg>
+            Search
+          </button>
+        </form>
       </main>
     </div>
   );

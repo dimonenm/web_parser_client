@@ -140,3 +140,148 @@
   width: 20px;
   height: 20px;
 }
+
+/* ... existing code ...*/
+.search_icon {
+  width: 20px;
+  height: 20px;
+}
+
+/* ===== LOADING ===== */
+.main_content_top {
+  justify-content: flex-start;
+  padding: 60px 20px 20px;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid #4c4c4c;
+  border-top-color: var(--gradient-end);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loading_text {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.error_text {
+  margin-top: 28px;
+  font-size: 14px;
+  color: #f87171;
+}
+
+/* ===== GALLERY ===== */
+.gallery_section {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 32px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  scroll-margin-top: 80px;
+}
+
+.gallery_title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.gallery_grid {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.card {
+  border: 1px solid var(--gradient-start);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.card_title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.reel_badge {
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+}
+
+.images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.image {
+  width: 180px;
+  height: 180px;
+  object-fit: cover;
+  border-radius: 12px;
+  background-color: #2b2b2b;
+}
+
+.image_broken {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 24px;
+}
+
+.load_more {
+  align-self: center;
+  padding: 12px 32px;
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+  background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.load_more:hover {
+  opacity: 0.9;
+}
+
+@media (max-width: 768px) {
+  .gallery_section {
+    padding: 0 16px 48px;
+  }
+
+  .image {
+    width: calc((100% - 32px) / 3);
+    height: auto;
+    aspect-ratio: 1;
+  }
+}

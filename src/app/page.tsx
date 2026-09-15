@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import styles from './page.module.css'
+import { GalleryImage } from '@/components/GalleryImage'
 
 interface IPost {
   type: 'p' | 'reel'
@@ -176,21 +177,3 @@ export default function Home() {
   )
 }
 
-function GalleryImage({ src, alt }: { src: string; alt: string }) {
-  const [failed, setFailed] = useState(false)
-
-  if (failed) {
-    return <div className={`${styles.image} ${styles.image_broken}`}>⚠</div>
-  }
-
-  return (
-    <img
-      className={styles.image}
-      src={src}
-      alt={alt}
-      loading='lazy'
-      referrerPolicy='no-referrer'
-      onError={() => setFailed(true)}
-    />
-  )
-}

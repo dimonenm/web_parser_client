@@ -235,6 +235,13 @@
   background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
 }
 
+.p_badge {
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+}
+
 .images {
   display: flex;
   flex-wrap: wrap;
@@ -284,4 +291,52 @@
     height: auto;
     aspect-ratio: 1;
   }
+
+  .codes_grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .code_chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-family: var(--font-geist-mono), monospace;
+    border: 1px solid var(--gradient-start);
+    border-radius: 999px;
+    color: var(--text-primary);
+    word-break: break-all;
+  }
+
+  .image_placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    background-image: repeating-linear-gradient(45deg,
+        #2b2b2b,
+        #2b2b2b 10px,
+        #303030 10px,
+        #303030 20px);
+  }
+
+  .placeholder_icon {
+    width: 32px;
+    height: 32px;
+    opacity: 0.5;
+  }
+
+  .card_index {
+  min-width: 24px;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  border-radius: 6px;
+  border: 1px solid var(--gradient-start);
+  color: var(--text-secondary);
+}
 }

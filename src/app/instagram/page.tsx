@@ -88,17 +88,17 @@ export default function InstagramShortCodesPage() {
 	}
 
 	const getShortCodesStatus = async () => {
-		setInterval(async () => {
+		await setInterval(async () => {
 			try {
 				const response = await fetch('/api/instagram/get_short_codes_status')
 				if (!response.ok) {
 					throw new Error(`HTTP error! status: ${response.status}`)
 				}
-				console.log(await response.json());
+				console.log(await response.text());
 			} catch (err) {
 				setError(err instanceof Error ? err.message : 'Ошибка при загрузке данных')
 			}
-		}, 1000)
+		}, 2000)
 	}
 
 	useEffect(() => {

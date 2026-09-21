@@ -1,14 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 
-export async function GET(request: NextRequest) {
-  const id = request.nextUrl.searchParams.get('id')
-
-  if (!id) {
-    return NextResponse.json(
-      { error: 'Missing id parameter' },
-      { status: 400 },
-    )
-  }
+export async function GET() {
 
   try {
     const response = await fetch(

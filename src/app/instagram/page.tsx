@@ -68,20 +68,37 @@ export default function InstagramShortCodesPage() {
 
 		try {
 			const response = await fetch(
-				`/api/instagram/get_all_short_codes/?id=${encodeURIComponent(extractUsername(query))}`,
+				`/api/instagram/get_all_short_codes_v2/?id=${encodeURIComponent(extractUsername(query))}`,
 				{ cache: 'no-store' },
 			)
 			if (!response.ok) {
 				throw new Error(`HTTP error! status: ${response.status}`)
 			}
 
+			getShortCodesStatus()
+
 			const data = await response.json()
-			setCodes(normalizeCodes(data))
+			console.log('data: ', data);
+			// setCodes(normalizeCodes(data))
 		} catch (err) {
 			setError(err instanceof Error ? err.message : 'Ошибка при загрузке данных')
 		} finally {
 			setLoading(false)
 		}
+	}
+
+	const getShortCodesStatus = async () => {
+		setInterval(async () => {
+			try {
+				const response = await fetch('/api/instagram/get_short_codes_status')
+				if (!response.ok) {
+					throw new Error(`HTTP error! status: ${response.status}`)
+				}
+				console.log(await response.json());
+			} catch (err) {
+				setError(err instanceof Error ? err.message : 'Ошибка при загрузке данных')
+			}
+		}, 1000)
 	}
 
 	useEffect(() => {

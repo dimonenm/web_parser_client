@@ -16,6 +16,7 @@ export default function InstagramShortCodesPage() {
 	const [error, setError] = useState('')
 
 	const listRef = useRef<HTMLDivElement>(null)
+	const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
 	const extractUsername = (value: string): string => {
 		const trimmed = value.trim()
@@ -68,7 +69,7 @@ export default function InstagramShortCodesPage() {
 
 		try {
 			const response = await fetch(
-				`/api/instagram/get_all_short_codes_v2/?id=${encodeURIComponent(extractUsername(query))}`,
+				`http://localhost:3000/instagram/get_all_short_codes_v2?id=${encodeURIComponent(query)}`,
 				{ cache: 'no-store' },
 			)
 			if (!response.ok) {
@@ -78,8 +79,7 @@ export default function InstagramShortCodesPage() {
 			getShortCodesStatus()
 
 			const data = await response.json()
-			console.log('data: ', data);
-			// setCodes(normalizeCodes(data))
+			console.log('data: ', data)
 		} catch (err) {
 			setError(err instanceof Error ? err.message : 'Ошибка при загрузке данных')
 		} finally {
@@ -88,17 +88,23 @@ export default function InstagramShortCodesPage() {
 	}
 
 	const getShortCodesStatus = async () => {
-		await setInterval(async () => {
-			try {
-				const response = await fetch('/api/instagram/get_short_codes_status')
-				if (!response.ok) {
-					throw new Error(`HTTP error! status: ${response.status}`)
-				}
-				console.log(await response.text());
-			} catch (err) {
-				setError(err instanceof Error ? err.message : 'Ошибка при загрузке данных')
+		try {
+			const response = await fetch('/api/instagram/get_short_codes_status')
+			if (!response.ok) {
+				throw new Error(`HTTP error! status: ${response.status}`)
 			}
-		}, 2000)
+			const data: { current: number; total: number; running: boolean } = await response.json()
+			console.log(data)
+
+			if (!data.running) {
+				console.log('Остановка запросов')
+				return // здесь return действительно всё останавливает: следующего запроса не будет
+			}
+
+			pollTimerRef.current = setTimeout(getShortCodesStatus, 2000)
+		} catch (err) {
+			setError(err instanceof Error ? err.message : 'Ошибка при загрузке данных')
+		}
 	}
 
 	useEffect(() => {

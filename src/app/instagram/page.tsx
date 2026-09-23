@@ -14,6 +14,7 @@ export default function InstagramShortCodesPage() {
 	const [loading, setLoading] = useState(false)
 	const [codes, setCodes] = useState<IShortCode[]>([])
 	const [error, setError] = useState('')
+	const [status, setStatus] = useState<{ current: number; total: number; running: boolean } | null>(null)
 
 	const listRef = useRef<HTMLDivElement>(null)
 	const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -64,45 +65,52 @@ export default function InstagramShortCodesPage() {
 		if (!query.trim()) return
 
 		setLoading(true)
-		setError('')
 		setCodes([])
+		setStatus(null)
 
 		try {
 			const response = await fetch(
 				`http://localhost:3000/instagram/get_all_short_codes_v2?id=${encodeURIComponent(query)}`,
 				{ cache: 'no-store' },
 			)
-			if (!response.ok) {
-				throw new Error(`HTTP error! status: ${response.status}`)
-			}
-
-			getShortCodesStatus()
+			if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
 
 			const data = await response.json()
 			console.log('data: ', data)
+			setCodes(normalizeCodes(data))
+
+			await getShortCodesStatus() // лоадер закрывается внутри опроса
 		} catch (err) {
 			setError(err instanceof Error ? err.message : 'Ошибка при загрузке данных')
-		} finally {
 			setLoading(false)
+		}
+	}
+
+	const stopPolling = () => {
+		if (pollTimerRef.current) {
+			clearTimeout(pollTimerRef.current)
+			pollTimerRef.current = null
 		}
 	}
 
 	const getShortCodesStatus = async () => {
 		try {
-			const response = await fetch('/api/instagram/get_short_codes_status')
-			if (!response.ok) {
-				throw new Error(`HTTP error! status: ${response.status}`)
-			}
-			const data: { current: number; total: number; running: boolean } = await response.json()
-			console.log(data)
+			const response = await fetch('/api/instagram/get_short_codes_status', { cache: 'no-store' })
+			if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+
+			const data = (await response.json()) as { current: number; total: number; running: boolean }
+			setStatus(data)
 
 			if (!data.running) {
-				console.log('Остановка запросов')
-				return // здесь return действительно всё останавливает: следующего запроса не будет
+				stopPolling()
+				setLoading(false) // только здесь снимаем лоадер
+				return
 			}
 
 			pollTimerRef.current = setTimeout(getShortCodesStatus, 2000)
 		} catch (err) {
+			stopPolling()
+			setLoading(false)
 			setError(err instanceof Error ? err.message : 'Ошибка при загрузке данных')
 		}
 	}
@@ -112,6 +120,8 @@ export default function InstagramShortCodesPage() {
 			listRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
 		}
 	}, [codes])
+
+	useEffect(() => () => stopPolling(), [])
 
 	return (
 		<div className={styles.container}>
@@ -169,12 +179,19 @@ export default function InstagramShortCodesPage() {
 					</button>
 				</form>
 
-				{loading && (
+				{(loading || status) && (
 					<div className={styles.loading}>
-						<span className={styles.spinner} />
+						{status?.running && <span className={styles.spinner} />}
 						<span className={styles.loading_text}>
-							Собираем short codes… это может занять несколько минут
+							{status?.running
+								? 'Собираем short codes… это может занять несколько минут'
+								: 'Готово'}
 						</span>
+						{status && (
+							<span className={styles.loading_text}>
+								{status.current} / {status.total}
+							</span>
+						)}
 					</div>
 				)}
 

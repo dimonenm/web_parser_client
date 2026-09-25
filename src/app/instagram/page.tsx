@@ -1,12 +1,13 @@
 'use client'
 
 import { SubmitEvent, useEffect, useRef, useState } from 'react'
-
 import { IShortCode } from '@/interfaces/IShortCode'
-
 import { Gallery } from '@/components/Gallery'
 
 import styles from '../page.module.css'
+
+interface IStatusData { current: number; total: number; running: boolean }
+
 
 
 export default function InstagramShortCodesPage() {
@@ -18,6 +19,8 @@ export default function InstagramShortCodesPage() {
 
 	const listRef = useRef<HTMLDivElement>(null)
 	const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+	console.log('codes: ', codes)
 
 	const extractUsername = (value: string): string => {
 		const trimmed = value.trim()
@@ -75,11 +78,11 @@ export default function InstagramShortCodesPage() {
 			)
 			if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
 
-			const data = await response.json()
-			console.log('data: ', data)
-			setCodes(normalizeCodes(data))
+			const resResponse = await response.json()
+			console.log('data: ', resResponse)
 
 			await getShortCodesStatus() // лоадер закрывается внутри опроса
+
 		} catch (err) {
 			setError(err instanceof Error ? err.message : 'Ошибка при загрузке данных')
 			setLoading(false)
@@ -98,7 +101,29 @@ export default function InstagramShortCodesPage() {
 			const response = await fetch('/api/instagram/get_short_codes_status', { cache: 'no-store' })
 			if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
 
-			const data = (await response.json()) as { current: number; total: number; running: boolean }
+			const data = (await response.json()) as IStatusData
+			setStatus(data)
+
+			if (!data.running) {
+				stopPolling()
+				setLoading(false) // только здесь снимаем лоадер
+				return
+			}
+
+			pollTimerRef.current = setTimeout(getShortCodesStatus, 2000)
+		} catch (err) {
+			stopPolling()
+			setLoading(false)
+			setError(err instanceof Error ? err.message : 'Ошибка при загрузке данных')
+		}
+	}
+
+	const getShortCodesData = async () => {
+		try {
+			const response = await fetch('/api/instagram/get_short_codes_data', { cache: 'no-store' })
+			if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+
+			const data = (await response.json()) as IStatusData
 			setStatus(data)
 
 			if (!data.running) {

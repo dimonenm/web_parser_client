@@ -214,7 +214,7 @@ export default function InstagramShortCodesPage() {
 						</span>
 						{status && (
 							<span className={styles.loading_text}>
-								{status.current} / {status.total}
+								{status.current + 1} / {status.total}
 							</span>
 						)}
 					</div>

@@ -98,7 +98,10 @@ export default function InstagramShortCodesPage() {
 
 	const getShortCodesStatus = async () => {
 		try {
-			const response = await fetch('/api/instagram/get_short_codes_status', { cache: 'no-store' })
+			const response = await fetch(
+        'http://localhost:3000/instagram/get_short_codes_status',
+        { cache: 'no-store' },
+      )
 			if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
 
 			const data = (await response.json()) as IStatusData
@@ -117,34 +120,43 @@ export default function InstagramShortCodesPage() {
 			setError(err instanceof Error ? err.message : 'Ошибка при загрузке данных')
 		}
 	}
+	const getShortCodesFile = async (): Promise<void> => {
 
-	const getShortCodesData = async () => {
-		try {
-			const response = await fetch('/api/instagram/get_short_codes_data', { cache: 'no-store' })
-			if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+		if (!query.trim()) return
 
-			const data = (await response.json()) as IStatusData
-			setStatus(data)
+    try {
+      const response = await fetch(
+        `http://localhost:3000/instagram/get_short_codes_file?id=${encodeURIComponent(query)}`,
+        {
+          cache: 'no-store',
+        },
+      )
+      if (!response.ok)
+        throw new Error(`HTTP error! status: ${response.status}`)
 
-			if (!data.running) {
-				stopPolling()
-				setLoading(false) // только здесь снимаем лоадер
-				return
-			}
-
-			pollTimerRef.current = setTimeout(getShortCodesStatus, 2000)
-		} catch (err) {
-			stopPolling()
-			setLoading(false)
-			setError(err instanceof Error ? err.message : 'Ошибка при загрузке данных')
-		}
-	}
+      const data = (await response.json()) as IShortCode[]
+			setCodes(data)
+			
+    } catch (err) {
+      stopPolling()
+      setLoading(false)
+      setError(
+        err instanceof Error ? err.message : 'Ошибка при загрузке данных',
+      )
+    }
+  }
 
 	useEffect(() => {
 		if (codes.length && listRef.current) {
 			listRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
 		}
 	}, [codes])
+
+	useEffect(() => {
+    if (!loading && !status?.running && codes.length === 0) {
+      getShortCodesFile()
+    }
+  }, [loading])
 
 	useEffect(() => () => stopPolling(), [])
 
@@ -214,7 +226,7 @@ export default function InstagramShortCodesPage() {
 						</span>
 						{status && (
 							<span className={styles.loading_text}>
-								{status.current + 1} / {status.total}
+								{status.current} / {status.total}
 							</span>
 						)}
 					</div>

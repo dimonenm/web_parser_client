@@ -15,23 +15,12 @@ export default function InstagramShortCodesPage() {
 	const [loading, setLoading] = useState(false)
 	const [codes, setCodes] = useState<IShortCode[]>([])
 	const [error, setError] = useState('')
-	const [status, setStatus] = useState<{ current: number; total: number; running: boolean } | null>(null)
+	const [status, setStatus] = useState<IStatusData | null>(null)
 
-	const listRef = useRef<HTMLDivElement>(null)
 	const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-	console.log('codes: ', codes)
+	// console.log('codes: ', codes)
 
-	const extractUsername = (value: string): string => {
-		const trimmed = value.trim()
-		if (!trimmed.includes('/')) return trimmed
-		try {
-			const url = new URL(trimmed)
-			return url.pathname.split('/').filter(Boolean)[0] ?? trimmed
-		} catch {
-			return trimmed
-		}
-	}
 	// Бэкенд может вернуть строки либо объекты — приводим к одному виду
 	const normalizeCodes = (data: unknown): IShortCode[] => {
 		const source = data as Record<string, unknown> | unknown[]
@@ -110,10 +99,12 @@ export default function InstagramShortCodesPage() {
 			if (!data.running) {
 				stopPolling()
 				setLoading(false) // только здесь снимаем лоадер
+				getShortCodesFile()
 				return
 			}
 
 			pollTimerRef.current = setTimeout(getShortCodesStatus, 2000)
+			
 		} catch (err) {
 			stopPolling()
 			setLoading(false)
@@ -145,18 +136,6 @@ export default function InstagramShortCodesPage() {
       )
     }
   }
-
-	useEffect(() => {
-		if (codes.length && listRef.current) {
-			listRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
-		}
-	}, [codes])
-
-	useEffect(() => {
-    if (!loading && !status?.running && codes.length === 0) {
-      getShortCodesFile()
-    }
-  }, [loading])
 
 	useEffect(() => () => stopPolling(), [])
 
@@ -236,11 +215,11 @@ export default function InstagramShortCodesPage() {
 			</main>
 
 			{/* Short codes list */}
-			{codes.length > 0 && (
-				<section className={styles.gallery_section} ref={listRef}>
-					<Gallery codes={codes} username={extractUsername(query)} />
+			{/*codes.length > 0 && (
+				<section className={styles.gallery_section}>
+					<Gallery codes={codes} username={query} />
 				</section>
-			)}
+			)*/}
 		</div>
 	)
 }

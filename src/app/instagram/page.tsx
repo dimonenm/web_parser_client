@@ -25,37 +25,6 @@ export default function InstagramShortCodesPage() {
 
   // console.log('codes: ', codes)
 
-  // Бэкенд может вернуть строки либо объекты — приводим к одному виду
-  const normalizeCodes = (data: unknown): IShortCode[] => {
-    const source = data as Record<string, unknown> | unknown[]
-    const list = Array.isArray(source)
-      ? source
-      : Array.isArray(source?.shortCodes)
-        ? (source.shortCodes as unknown[])
-        : []
-
-    const seen = new Set<string>()
-
-    return list.reduce<IShortCode[]>((acc, item) => {
-      const raw = item as Record<string, unknown> | string
-      const code =
-        typeof raw === 'string'
-          ? raw
-          : (raw?.shortCode ?? raw?.shortcode ?? raw?.code ?? raw?.id)
-
-      if (typeof code !== 'string' || seen.has(code)) return acc
-
-      seen.add(code)
-
-      const type: IShortCode['type'] =
-        typeof raw === 'object' && raw !== null && raw.type === 'reel'
-          ? 'reel'
-          : 'p'
-
-      acc.push({ shortCode: code, type })
-      return acc
-    }, [])
-  }
   const handleSubmit = async (e: SubmitEvent) => {
     e.preventDefault()
     if (!query.trim()) return
@@ -66,7 +35,7 @@ export default function InstagramShortCodesPage() {
 
     try {
       const response = await fetch(
-        `http://localhost:3000/instagram/get_all_short_codes_v2?id=${encodeURIComponent(query)}`,
+        `http://localhost:3000/instagram/start_get_all_short_codes_v2?id=${encodeURIComponent(query)}`,
         { cache: 'no-store' },
       )
       if (!response.ok)
@@ -76,6 +45,20 @@ export default function InstagramShortCodesPage() {
       console.log('data: ', resResponse)
 
       await getShortCodesStatus() // лоадер закрывается внутри опроса
+
+      try {
+        const response = await fetch(
+          `http://localhost:3000/instagram/start_get_all_posts?id=${encodeURIComponent(query)}`,
+          { cache: 'no-store' },
+        )
+        if (!response.ok)
+          throw new Error(`HTTP error! status: ${response.status}`)
+
+        const resResponse = await response.json()
+        console.log('data: ', resResponse)
+      } catch (err) {
+        console.log('err: ', err)
+      }
     } catch (err) {
       setError(
         err instanceof Error ? err.message : 'Ошибка при загрузке данных',

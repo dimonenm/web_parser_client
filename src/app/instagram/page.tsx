@@ -199,11 +199,11 @@ export default function InstagramShortCodesPage() {
     const controller = new AbortController()
     abortRef.current = controller
 
-    setLoading(true)
-    setCodes([])
-    setCodesTask(EMPTY_TASK)
-    setPostsTask(EMPTY_TASK)
-    setError('')
+    // setLoading(true)
+    // setCodes([])
+    // setCodesTask(EMPTY_TASK)
+    // setPostsTask(EMPTY_TASK)
+    // setError('')
 
     // ошибка в любой цепочке показывает текст и останавливает вторую
     const guard = (task: Promise<void>) =>
@@ -215,25 +215,25 @@ export default function InstagramShortCodesPage() {
         controller.abort()
       })
 
-    try {
-      // обе задачи стартуют и опрашиваются параллельно
-      // await Promise.all([
-      //   guard(runCodesTask(username, controller.signal)),
-      //   guard(runPostsTask(username, controller.signal)),
-      // ])
+    // try {
+    //   await guard(runCodesTask(username, controller.signal))
+    //   if (!controller.signal.aborted)
+    //     await guard(runPostsTask(username, controller.signal))
+    // } finally {
+    //   if (abortRef.current === controller) {
+    //     abortRef.current = null
+    //     clearTimers()
+    //     setLoading(false)
+    //   }
+    // }
 
-      // сначала short codes, посты — только после того как файл со шорткодами готов
-      await guard(runCodesTask(username, controller.signal))
-      if (!controller.signal.aborted)
-        await guard(runPostsTask(username, controller.signal))
-      
-    } finally {
-      if (abortRef.current === controller) {
-        abortRef.current = null
-        clearTimers()
-        setLoading(false)
-      }
-    }
+    const response = await fetch(
+      `${API}/get_all_posts_from_gallary?id=${encodeURIComponent(username)}`,
+      { cache: 'no-store' },
+    )
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+
+    console.log(await response.json())
   }
 
   // открываем системный диалог выбора файла

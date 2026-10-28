@@ -5,6 +5,7 @@ import { IShortCode } from '@/interfaces/IShortCode'
 import { Gallery } from '@/components/Gallery'
 
 import styles from '../page.module.css'
+import { IGalleryItem } from '@/interfaces/IGelleryItems'
 
 interface IStatusData {
   current: number
@@ -12,180 +13,32 @@ interface IStatusData {
   running: boolean
 }
 
-type TaskStage = 'running' | 'done' | null
-
-interface ITaskState {
-  stage: TaskStage
-  status: IStatusData | null
-}
-
 const API = 'http://localhost:3000/instagram'
-const POLL_INTERVAL = 2000
 
-const EMPTY_TASK: ITaskState = { stage: null, status: null }
-
-type TimerRef = { current: ReturnType<typeof setTimeout> | null }
-
-const percentOf = (status: IStatusData | null): number =>
-  status && status.total > 0
-    ? Math.min(100, Math.round((status.current / status.total) * 100))
-    : 0
-
-// Индикатор одной задачи. Вынесен на уровень модуля, чтобы не пересоздавался
-// при каждом рендере страницы.
-const TaskIndicator = ({
-  title,
-  task,
-}: {
-  title: string
-  task: ITaskState
-}) => {
-  if (!task.stage && !task.status) return null
-
-  const running = task.stage === 'running'
-  const percent = percentOf(task.status)
-
-  return (
-    <div className={`${styles.loading} ${styles.loading_column}`}>
-      <div className={styles.loading_row}>
-        {running && <span className={styles.spinner} />}
-        <span className={styles.loading_title}>{title}</span>
-        <span className={running ? styles.loading_text : styles.loading_done}>
-          {running ? 'в работе…' : 'Готово'}
-        </span>
-      </div>
-
-      {task.status && (
-        <div className={styles.progress_wrap}>
-          <div
-            className={styles.progress_track}
-            role='progressbar'
-            aria-valuemin={0}
-            aria-valuemax={task.status.total}
-            aria-valuenow={task.status.current}
-          >
-            <div
-              className={styles.progress_bar}
-              style={{ width: `${percent}%` }}
-            />
-          </div>
-          <span className={styles.loading_text}>
-            {task.status.current} / {task.status.total} ({percent}%)
-          </span>
-        </div>
-      )}
-    </div>
-  )
-}
-
-export default function InstagramShortCodesPage() {
+export default function InstagramGelleryPage() {
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
   const [downloading, setDownloading] = useState(false)
-  const [codes, setCodes] = useState<IShortCode[]>([])
+  const [gelleryItems, setGelleryItems] = useState<IGalleryItem[]>([])
+  const [status, setStatus] = useState<IStatusData | null>(null)
   const [error, setError] = useState('')
 
-  // две независимые задачи — два независимых состояния
-  const [codesTask, setCodesTask] = useState<ITaskState>(EMPTY_TASK)
-  const [postsTask, setPostsTask] = useState<ITaskState>(EMPTY_TASK)
-
-  const codesTimerRef = useRef<TimerRef['current']>(null)
-  const postsTimerRef = useRef<TimerRef['current']>(null)
-  const abortRef = useRef<AbortController | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  // console.log('codes: ', codes)
+  const POLL_INTERVAL = 3000
 
-  // ===== инфраструктура опроса =====
-
-  const clearTimers = () => {
-    if (codesTimerRef.current) clearTimeout(codesTimerRef.current)
-    if (postsTimerRef.current) clearTimeout(postsTimerRef.current)
-    codesTimerRef.current = null
-    postsTimerRef.current = null
-  }
-
-  const stopAll = () => {
-    clearTimers()
-    abortRef.current?.abort()
-    abortRef.current = null
-  }
-
-  // sleep привязан к таймеру своей задачи — опросы не затирают друг друга
-  const sleep = (timerRef: TimerRef, ms: number) =>
-    new Promise<void>(resolve => {
-      timerRef.current = setTimeout(resolve, ms)
+  // GET /api/instagram/get_short_codes_status → { current, total, running }
+  const fetchStatus = async (): Promise<IStatusData> => {
+    const response = await fetch(`${API}/get_short_codes_status`, {
+      cache: 'no-store',
     })
-
-  const fetchJson = async <T,>(
-    url: string,
-    signal: AbortSignal,
-  ): Promise<T> => {
-    const response = await fetch(url, { cache: 'no-store', signal })
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
-
-    return (await response.json()) as T
-  }
-
-  const pollStatus = async (opts: {
-    url: string
-    signal: AbortSignal
-    timerRef: TimerRef
-    onStatus: (status: IStatusData) => void
-  }): Promise<void> => {
-    for (;;) {
-      const status = await fetchJson<IStatusData>(opts.url, opts.signal)
-      opts.onStatus(status)
-
-      if (!status.running) return
-
-      await sleep(opts.timerRef, POLL_INTERVAL)
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
     }
-  }
 
-  // ===== две независимые цепочки =====
-
-  const runCodesTask = async (username: string, signal: AbortSignal) => {
-    setCodesTask({ stage: 'running', status: null })
-
-    const start = await fetchJson(
-      `${API}/start_get_all_short_codes_v2?id=${encodeURIComponent(username)}`,
-      signal,
-    )
-    console.log('startGetAllShortCodesV2: ', start)
-
-    await pollStatus({
-      url: `${API}/get_short_codes_status`,
-      signal,
-      timerRef: codesTimerRef,
-      onStatus: status => setCodesTask(prev => ({ ...prev, status })),
-    })
-
-    const file = await fetchJson<IShortCode[]>(
-      `${API}/get_short_codes_file?id=${encodeURIComponent(username)}`,
-      signal,
-    )
-    setCodes(file)
-    setCodesTask(prev => ({ stage: 'done', status: prev.status }))
-  }
-
-  const runPostsTask = async (username: string, signal: AbortSignal) => {
-    setPostsTask({ stage: 'running', status: null })
-
-    const start = await fetchJson(
-      `${API}/start_get_all_posts?id=${encodeURIComponent(username)}`,
-      signal,
-    )
-    console.log('startGetAllPosts: ', start)
-
-    await pollStatus({
-      url: `${API}/get_posts_status`,
-      signal,
-      timerRef: postsTimerRef,
-      onStatus: status => setPostsTask(prev => ({ ...prev, status })),
-    })
-
-    setPostsTask(prev => ({ stage: 'done', status: prev.status }))
+    const data: IStatusData = await response.json()
+    setStatus(data)
+    return data
   }
 
   // ===== обработчики =====
@@ -195,45 +48,47 @@ export default function InstagramShortCodesPage() {
     const username = query.trim()
     if (!username) return
 
-    stopAll() // повторный сабмит не должен плодить второй комплект опросов
-    const controller = new AbortController()
-    abortRef.current = controller
+    setLoading(true)
+    setError('')
+    setGelleryItems([])
+    setStatus(null)
 
-    // setLoading(true)
-    // setCodes([])
-    // setCodesTask(EMPTY_TASK)
-    // setPostsTask(EMPTY_TASK)
-    // setError('')
-
-    // ошибка в любой цепочке показывает текст и останавливает вторую
-    const guard = (task: Promise<void>) =>
-      task.catch((err: unknown) => {
-        if (controller.signal.aborted) return
-        setError(
-          err instanceof Error ? err.message : 'Ошибка при загрузке данных',
-        )
-        controller.abort()
-      })
-
-    // try {
-    //   await guard(runCodesTask(username, controller.signal))
-    //   if (!controller.signal.aborted)
-    //     await guard(runPostsTask(username, controller.signal))
-    // } finally {
-    //   if (abortRef.current === controller) {
-    //     abortRef.current = null
-    //     clearTimers()
-    //     setLoading(false)
-    //   }
-    // }
-
+  try {
     const response = await fetch(
       `${API}/get_all_posts_from_gallary?id=${encodeURIComponent(username)}`,
       { cache: 'no-store' },
     )
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
 
-    console.log(await response.json())
+    // 1) опрашиваем статус, пока бэкенд обрабатывает посты
+    let current = await fetchStatus()
+    while (current.running) {
+      await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL))
+      current = await fetchStatus()
+    }
+
+    // 2) сервер ответил — раскладываем JSON сразу в gelleryItems
+    const data = await response.json()
+    const posts = (
+      Array.isArray(data) ? data : (data.posts ?? [])
+    ) as (IShortCode & {
+      picUrls?: string[]
+    })[]
+
+    setGelleryItems(
+      posts.map((post, index) => ({
+        shortCode: post.shortCode,
+        type: post.type,
+        index,
+        previewUrl: post.picUrls?.[0] ?? '',
+        picUrls: post.picUrls ?? [],
+      })),
+    )
+  } catch (err) {
+    setError(err instanceof Error ? err.message : 'Ошибка при загрузке данных')
+  } finally {
+    setLoading(false)
+  }
   }
 
   // открываем системный диалог выбора файла
@@ -243,11 +98,9 @@ export default function InstagramShortCodesPage() {
   }
 
   const handleClear = () => {
-    stopAll()
     setQuery('')
-    setCodes([])
-    setCodesTask(EMPTY_TASK)
-    setPostsTask(EMPTY_TASK)
+    setGelleryItems([])
+    setStatus(null)
     setError('')
     setLoading(false)
     setDownloading(false)
@@ -281,23 +134,6 @@ export default function InstagramShortCodesPage() {
     }
   }
 
-  useEffect(
-    () => () => {
-      // при unmount чистим оба таймера и незавершённые запросы
-      if (codesTimerRef.current) clearTimeout(codesTimerRef.current)
-      if (postsTimerRef.current) clearTimeout(postsTimerRef.current)
-      abortRef.current?.abort()
-    },
-    [],
-  )
-
-  const showTasks =
-    loading ||
-    !!codesTask.stage ||
-    !!postsTask.stage ||
-    !!codesTask.status ||
-    !!postsTask.status
-
   return (
     <div className={styles.container}>
       {/* Header */}
@@ -319,7 +155,7 @@ export default function InstagramShortCodesPage() {
 
       {/* Main Content */}
       <main
-        className={`${styles.main_content} ${codes.length ? styles.main_content_top : ''}`}
+        className={`${styles.main_content} ${gelleryItems.length ? styles.main_content_top : ''}`}
       >
         <h1 className={styles.title}>Instagram short codes</h1>
         <p className={styles.subtitle}>
@@ -408,23 +244,23 @@ export default function InstagramShortCodesPage() {
           </button>
         </form>
 
-        {/* Два независимых индикатора */}
-        {showTasks && (
-          <div className={styles.tasks_column}>
-            <TaskIndicator title='Short codes' task={codesTask} />
-            <TaskIndicator title='Posts' task={postsTask} />
-          </div>
-        )}
-
         {error && <p className={styles.error_text}>{error}</p>}
       </main>
 
-      {/* Short codes list */}
-      {/*codes.length > 0 && (
-				<section className={styles.gallery_section}>
-					<Gallery codes={codes} username={query} />
-				</section>
-			)*/}
+      {loading && status && (
+        <div className={styles.loading}>
+          <span className={styles.spinner} />
+          <span className={styles.loading_text}>
+            Обработка: {status.current} / {status.total}
+          </span>
+        </div>
+      )}
+
+      {gelleryItems.length > 0 && (
+        <section className={styles.gallery_section}>
+          <Gallery items={gelleryItems} username={query} />
+        </section>
+      )}
     </div>
   )
 }

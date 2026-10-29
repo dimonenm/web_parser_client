@@ -1,19 +1,37 @@
 'use client'
 
-import { ChangeEvent, SubmitEvent, useEffect, useRef, useState } from 'react'
-import { IShortCode } from '@/interfaces/IShortCode'
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
 import { Gallery } from '@/components/Gallery'
 
 import styles from '../page.module.css'
-import { IGalleryItem } from '@/interfaces/IGelleryItems'
-
-interface IStatusData {
-  current: number
-  total: number
-  running: boolean
-}
+import {
+  IGalleryItem,
+  IPost,
+  IStatusData,
+} from '@/interfaces/instagram.interfaces'
 
 const API = 'http://localhost:3000/instagram'
+const POLL_INTERVAL = 3000
+const POLL_TIMEOUT = 5 * 60_000
+
+// GET get_all_posts_from_gallary → JSON.stringify(IPost[]);
+// приводим к карточкам сетки, добавляя index
+const parsePosts = (data: unknown): IGalleryItem[] => {
+  const raw = Array.isArray(data) ? data : (data as { posts?: unknown }).posts
+  if (!Array.isArray(raw)) return []
+
+  return raw
+    .filter((item): item is IPost => {
+      const post = item as Partial<IPost> | null
+      return typeof post?.shortCode === 'string' && post.shortCode.length > 0
+    })
+    .map((post, index) => ({
+      shortCode: post.shortCode,
+      type: typeof post.type === 'string' ? post.type : 'p',
+      picUrls: Array.isArray(post.picUrls) ? post.picUrls : [],
+      index,
+    }))
+}
 
 export default function InstagramGelleryPage() {
   const [query, setQuery] = useState('')
@@ -24,71 +42,102 @@ export default function InstagramGelleryPage() {
   const [error, setError] = useState('')
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
-  const POLL_INTERVAL = 3000
-
-  // GET /api/instagram/get_short_codes_status → { current, total, running }
-  const fetchStatus = async (): Promise<IStatusData> => {
+  // GET {API}/get_short_codes_status → { current, total, running }
+  const fetchStatus = async (signal: AbortSignal): Promise<IStatusData> => {
     const response = await fetch(`${API}/get_short_codes_status`, {
       cache: 'no-store',
+      signal,
     })
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)
     }
 
-    const data: IStatusData = await response.json()
+    const data = (await response.json()) as IStatusData
     setStatus(data)
     return data
   }
 
   // ===== обработчики =====
 
-  const handleSubmit = async (e: SubmitEvent) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const username = query.trim()
     if (!username) return
+
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
 
     setLoading(true)
     setError('')
     setGelleryItems([])
     setStatus(null)
 
-  try {
-    const response = await fetch(
-      `${API}/get_all_posts_from_gallary?id=${encodeURIComponent(username)}`,
-      { cache: 'no-store' },
-    )
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+    try {
+      // 1) запускаем основной запрос и НЕ ждём его — бэкенд отдаст JSON,
+      //    когда соберёт все посты
+      const postsPromise = fetch(
+        `${API}/get_all_posts_from_gallary?id=${encodeURIComponent(username)}`,
+        { cache: 'no-store', signal: controller.signal },
+      ).then(async response => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+        return parsePosts(await response.json())
+      })
 
-    // 1) опрашиваем статус, пока бэкенд обрабатывает посты
-    let current = await fetchStatus()
-    while (current.running) {
-      await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL))
-      current = await fetchStatus()
+      // страхуем от unhandled rejection на время поллинга:
+      // настоящая ошибка будет достанется через await ниже
+      postsPromise.catch(() => undefined)
+
+      let arrived = false
+      postsPromise.then(
+        () => {
+          arrived = true
+        },
+        () => {
+          arrived = true
+        },
+      )
+
+      // 2) параллельно опрашиваем прогресс. Это косметика —
+      //    ронять загрузку галереи из-за него нельзя
+      try {
+        const deadline = Date.now() + POLL_TIMEOUT
+        let current = await fetchStatus(controller.signal)
+
+        while (current.running && !arrived && Date.now() < deadline) {
+          await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL))
+          if (controller.signal.aborted) return
+          current = await fetchStatus(controller.signal)
+        }
+      } catch (err) {
+        if (controller.signal.aborted) return
+        console.warn('get_short_codes_status недоступен:', err)
+      }
+
+      // 3) вот здесь дожидаемся реально ответа с постами
+      const posts = await postsPromise
+
+      if (!posts.length) {
+        setError('Бэкенд вернул пустой список постов')
+        return
+      }
+
+      setGelleryItems(posts)
+    } catch (err) {
+      if (controller.signal.aborted) return
+      setError(
+        err instanceof Error ? err.message : 'Ошибка при загрузке данных',
+      )
+    } finally {
+      if (abortRef.current === controller) {
+        abortRef.current = null
+        setLoading(false)
+      }
     }
-
-    // 2) сервер ответил — раскладываем JSON сразу в gelleryItems
-    const data = await response.json()
-    const posts = (
-      Array.isArray(data) ? data : (data.posts ?? [])
-    ) as (IShortCode & {
-      picUrls?: string[]
-    })[]
-
-    setGelleryItems(
-      posts.map((post, index) => ({
-        shortCode: post.shortCode,
-        type: post.type,
-        index,
-        previewUrl: post.picUrls?.[0] ?? '',
-        picUrls: post.picUrls ?? [],
-      })),
-    )
-  } catch (err) {
-    setError(err instanceof Error ? err.message : 'Ошибка при загрузке данных')
-  } finally {
-    setLoading(false)
-  }
   }
 
   // открываем системный диалог выбора файла
@@ -98,6 +147,8 @@ export default function InstagramGelleryPage() {
   }
 
   const handleClear = () => {
+    abortRef.current?.abort()
+    abortRef.current = null
     setQuery('')
     setGelleryItems([])
     setStatus(null)
@@ -125,7 +176,6 @@ export default function InstagramGelleryPage() {
 
       if (!id) throw new Error('В файле нет данных')
 
-      console.log('id: ', id)
       setQuery(id)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось прочитать файл')
@@ -133,6 +183,9 @@ export default function InstagramGelleryPage() {
       setDownloading(false)
     }
   }
+
+  // уход со страницы — отменяем незавершённые запросы
+  useEffect(() => () => abortRef.current?.abort(), [])
 
   return (
     <div className={styles.container}>

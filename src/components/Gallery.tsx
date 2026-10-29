@@ -1,23 +1,16 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
+import { IGalleryItem } from '@/interfaces/instagram.interfaces'
 import { GalleryImage } from '@/components/GalleryImage'
-import { IGalleryItem } from '@/interfaces/IGelleryItems'
-import { IShortCode } from '@/interfaces/IShortCode'
 import styles from '@/app/page.module.css'
 
 const PAGE_SIZE = 20
+const API = 'http://localhost:3000/instagram'
 
-// стабильные пустые массивы для дефолтов — иначе useMemo/effect срабатывают каждый рендер
-const NO_CODES: IShortCode[] = []
+// стабильная ссылка для дефолта — иначе effect пересобирается на каждый рендер
 const NO_ITEMS: IGalleryItem[] = []
-
-interface IGalleryProps {
-  codes?: IShortCode[]
-  items?: IGalleryItem[] // готовый список из gelleryItems
-  username: string
-}
 
 // Бэкенд может вернуть строки, объекты с url или поле picUrls — сводим к string[]
 const extractPics = (data: unknown): string[] => {
@@ -38,157 +31,150 @@ const extractPics = (data: unknown): string[] => {
 }
 
 export function Gallery({
-  codes = NO_CODES,
   items = NO_ITEMS,
   username,
-}: IGalleryProps) {
+}: {
+  items?: IGalleryItem[]
+  username: string
+}) {
   const [visible, setVisible] = useState(PAGE_SIZE)
+  // shortCode -> фото; [] значит «запрос выполнен, фото нет / ошибка»
   const [pics, setPics] = useState<Record<string, string[]>>({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const requestedRef = useRef<Set<string>>(new Set())
+  // журнал завершённых shortCode: не завязан на state, поэтому эффект не перезапускается
+  const doneRef = useRef<Set<string>>(new Set())
 
-  // единый источник карточек: готовые items либо голые codes
-  const list: IGalleryItem[] = useMemo(
-    () =>
-      items.length ? items : codes.map((code, index) => ({ ...code, index })),
-    [items, codes],
-  )
-
-  // фото, приехавшие вместе с JSON поста — их докачивать не нужно
-  const readyPics = useMemo(
-    () =>
-      Object.fromEntries(
-        items.map(item => [item.shortCode, item.picUrls ?? []]),
-      ) as Record<string, string[]>,
-    [items],
-  )
-
-  // Новый поиск → сброс пагинации, кэша картинок и журнала запросов
+  // Новый поиск → сброс пагинации, кэша фото и журнала
   useEffect(() => {
+    doneRef.current = new Set()
     setVisible(PAGE_SIZE)
     setPics({})
-    requestedRef.current.clear()
-  }, [items, codes])
+    setError('')
+  }, [items])
 
-  // Последовательная загрузка: карточка появляется, только когда фото пришли
+  // Карточки без picUrls в JSON докачиваем параллельно одной пачкой
   useEffect(() => {
-    const queue = list
+    const pending = items
       .slice(0, visible)
       .filter(
-        code =>
-          !requestedRef.current.has(code.shortCode) &&
-          !readyPics[code.shortCode]?.length,
+        item => !item.picUrls?.length && !doneRef.current.has(item.shortCode),
       )
 
-    if (!queue.length) return
+    if (!pending.length) {
+      setLoading(false)
+      return
+    }
 
     const controller = new AbortController()
-    let cancelled = false
-
-    queue.forEach(code => requestedRef.current.add(code.shortCode))
     setLoading(true)
-    setError('')
 
     const run = async () => {
-      for (const code of queue) {
-        if (cancelled) break
+      const results = await Promise.allSettled(
+        pending.map(async item => {
+          const params = new URLSearchParams({
+            type: item.type,
+            shortCode: item.shortCode,
+          })
 
-        const params = new URLSearchParams({
-          type: code.type,
-          shortCode: code.shortCode,
-        })
-
-        try {
           const response = await fetch(
-            `/api/instagram/get_pic_by_short_code/?${params.toString()}`,
+            `${API}/get_pic_by_short_code?${params.toString()}`,
             { cache: 'no-store', signal: controller.signal },
           )
+          
           if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`)
           }
 
-          const urls = extractPics(await response.json())
-          if (!cancelled) {
-            setPics(prev => ({ ...prev, [code.shortCode]: urls }))
-          }
-        } catch (err) {
-          if (
-            cancelled ||
-            (err instanceof DOMException && err.name === 'AbortError')
-          ) {
-            // запрос прерван — снимаем отметку, чтобы повторить при следующем прогоне
-            requestedRef.current.delete(code.shortCode)
-            break
-          }
+          return extractPics(await response.json())
+        }),
+      )
+
+      if (controller.signal.aborted) return
+
+      const patch: Record<string, string[]> = {}
+
+      results.forEach((result, i) => {
+        const { shortCode } = pending[i]
+        doneRef.current.add(shortCode)
+
+        if (result.status === 'fulfilled') {
+          patch[shortCode] = result.value
+        } else {
           // одна упавшая карточка не должна останавливать остальные
-          setPics(prev => ({ ...prev, [code.shortCode]: [] }))
+          patch[shortCode] = []
           setError(
-            err instanceof Error ? err.message : 'Ошибка при загрузке фото',
+            result.reason instanceof Error
+              ? result.reason.message
+              : 'Ошибка при загрузке фото',
           )
         }
-      }
+      })
 
-      if (!cancelled) setLoading(false)
+      setPics(prev => ({ ...prev, ...patch }))
+      setLoading(false)
     }
 
     run()
 
-    return () => {
-      cancelled = true
-      controller.abort()
-    }
-  }, [list, visible, readyPics])
+    return () => controller.abort()
+  }, [items, visible])
 
   return (
     <>
       <h2 className={styles.gallery_title}>
-        {username} — {list.length}
+        {username} — {items.length}
         {loading && <span className={styles.card_index}> Loading…</span>}
       </h2>
 
       {error && <p className={styles.error_text}>{error}</p>}
 
       <div className={styles.gallery_grid}>
-        {list.slice(0, visible).map((code, index) => {
-          const urls = pics[code.shortCode] ?? readyPics[code.shortCode]
-
-          // Пока фото этого поста не пришли (или их нет) — ничего не рендерим
-          if (!urls?.length) return null
+        {items.slice(0, visible).map((item, index) => {
+          // фото либо приехали с JSON поста, либо докачаны; undefined — ещё грузятся
+          const urls = item.picUrls?.length
+            ? item.picUrls
+            : pics[item.shortCode]
 
           return (
-            <article key={code.shortCode} className={styles.card}>
+            <article key={item.shortCode} className={styles.card}>
               <span className={styles.card_title}>
                 <span className={styles.card_index}>{index + 1}</span>
-                {code.type === 'reel' && (
+                {item.type === 'reel' && (
                   <span className={styles.reel_badge}>Reel</span>
                 )}
-                {code.type === 'p' && <span className={styles.p_badge}>P</span>}
-                {code.shortCode}
+                {item.type === 'p' && <span className={styles.p_badge}>P</span>}
+                {item.shortCode}
               </span>
 
               <div className={styles.images}>
-                {urls.map((url, i) => (
-                  <GalleryImage
-                    key={`${code.shortCode}_${i}`}
-                    src={url}
-                    alt={`${code.shortCode} — ${i + 1}`}
-                  />
-                ))}
+                {urls?.length ? (
+                  urls.map((url, i) => (
+                    <GalleryImage
+                      key={`${item.shortCode}_${i}`}
+                      src={url}
+                      alt={`${item.shortCode} — ${i + 1}`}
+                    />
+                  ))
+                ) : (
+                  <div className={`${styles.image} ${styles.image_broken}`}>
+                    {urls ? '⚠' : '⏳'}
+                  </div>
+                )}
               </div>
             </article>
           )
         })}
       </div>
 
-      {visible < list.length && (
+      {visible < items.length && (
         <button
           type='button'
           className={styles.load_more}
           onClick={() => setVisible(v => v + PAGE_SIZE)}
         >
-          Показать ещё ({list.length - visible})
+          Показать ещё ({items.length - visible})
         </button>
       )}
     </>

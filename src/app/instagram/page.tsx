@@ -11,13 +11,31 @@ import {
 } from '@/interfaces/instagram.interfaces'
 
 const API = 'http://localhost:3000/instagram'
-const POLL_INTERVAL = 3000
-const POLL_TIMEOUT = 5 * 60_000
+const POLL_INTERVAL = 2000
+// реальный прогон на бэкенде ~5-10 мин, старых 5 мин не хватало
+const POLL_TIMEOUT = 20 * 60_000
 
-// GET get_all_posts_from_gallary → JSON.stringify(IPost[]);
-// приводим к карточкам сетки, добавляя index
+// бэкенд отдаёт JSON.stringify(posts) — на всякий случай разворачиваем строку
+const unwrapJson = (data: unknown): unknown => {
+  let value = data
+  for (let i = 0; i < 2 && typeof value === 'string'; i++) {
+    try {
+      value = JSON.parse(value)
+    } catch {
+      return null
+    }
+  }
+  return value
+}
+
+const formatDuration = (ms: number): string =>
+  `${Math.floor(ms / 60_000)}м ${String(Math.round((ms % 60_000) / 1000)).padStart(2, '0')}с`
+
 const parsePosts = (data: unknown): IGalleryItem[] => {
-  const raw = Array.isArray(data) ? data : (data as { posts?: unknown }).posts
+  const source = unwrapJson(data)
+  const raw = Array.isArray(source)
+    ? source
+    : (source as { posts?: unknown })?.posts
   if (!Array.isArray(raw)) return []
 
   return raw
@@ -44,9 +62,12 @@ export default function InstagramGelleryPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
-  // GET {API}/get_short_codes_status → { current, total, running }
-  const fetchStatus = async (signal: AbortSignal): Promise<IStatusData> => {
-    const response = await fetch(`${API}/get_short_codes_status`, {
+  // GET {API}/get_posts_status → IStatusData
+  const fetchStatus = async (
+    signal: AbortSignal,
+    username: string,
+  ): Promise<IStatusData> => {
+    const response = await fetch(`${API}/get_posts_status`, {
       cache: 'no-store',
       signal,
     })
@@ -55,7 +76,8 @@ export default function InstagramGelleryPage() {
     }
 
     const data = (await response.json()) as IStatusData
-    setStatus(data)
+    // прогресс чужого профиля показывать нельзя
+    if (data.id === username) setStatus(data)
     return data
   }
 
@@ -106,20 +128,28 @@ export default function InstagramGelleryPage() {
       //    ронять загрузку галереи из-за него нельзя
       try {
         const deadline = Date.now() + POLL_TIMEOUT
-        let current = await fetchStatus(controller.signal)
+        let current = await fetchStatus(controller.signal, username)
 
-        while (current.running && !arrived && Date.now() < deadline) {
+        while (!arrived && Date.now() < deadline) {
+          // наш прогон завершился — дальше ждать смысла нет
+          if (current.id === username && !current.running) break
+
           await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL))
           if (controller.signal.aborted) return
-          current = await fetchStatus(controller.signal)
+          current = await fetchStatus(controller.signal, username)
         }
       } catch (err) {
         if (controller.signal.aborted) return
-        console.warn('get_short_codes_status недоступен:', err)
+        console.warn('get_posts_status недоступен:', err)
       }
 
-      // 3) вот здесь дожидаемся реально ответа с постами
+      // 3) вот здесь дожидаемся реального ответа с постами
       const posts = await postsPromise
+
+      if (status?.error) {
+        setError(`Бэкенд: ${status.error}`)
+        return
+      }
 
       if (!posts.length) {
         setError('Бэкенд вернул пустой список постов')
@@ -186,6 +216,11 @@ export default function InstagramGelleryPage() {
 
   // уход со страницы — отменяем незавершённые запросы
   useEffect(() => () => abortRef.current?.abort(), [])
+
+  const percent =
+    status && status.total > 0
+      ? Math.min(100, Math.round((status.current / status.total) * 100))
+      : 0
 
   return (
     <div className={styles.container}>
@@ -297,17 +332,48 @@ export default function InstagramGelleryPage() {
           </button>
         </form>
 
+        {/* Индикатор и ошибки — ВНУТРИ main, сразу после формы */}
+        {loading && status && (
+          <div className={`${styles.loading} ${styles.loading_column}`}>
+            <div className={styles.loading_row}>
+              <span className={styles.spinner} />
+              <span className={styles.loading_text}>
+                {status.id}: {status.current} / {status.total} · раунд{' '}
+                {status.round} · пройдено {status.scanned}
+                {status.lastShortCode && ` · ${status.lastShortCode}`}
+                {status.elapsedMs > 0 &&
+                  ` · ${formatDuration(status.elapsedMs)}`}
+              </span>
+            </div>
+
+            <div className={styles.progress_wrap}>
+              <div
+                className={styles.progress_track}
+                role='progressbar'
+                aria-valuemin={0}
+                aria-valuemax={status.total}
+                aria-valuenow={status.current}
+              >
+                <div
+                  className={styles.progress_bar}
+                  style={{ width: `${percent}%` }}
+                />
+              </div>
+              <span className={styles.loading_text}>
+                {percent}% · осталось ~
+                {status.running && status.current > 0
+                  ? formatDuration(
+                      ((status.total - status.current) / status.current) *
+                        status.elapsedMs,
+                    )
+                  : '—'}
+              </span>
+            </div>
+          </div>
+        )}
+
         {error && <p className={styles.error_text}>{error}</p>}
       </main>
-
-      {loading && status && (
-        <div className={styles.loading}>
-          <span className={styles.spinner} />
-          <span className={styles.loading_text}>
-            Обработка: {status.current} / {status.total}
-          </span>
-        </div>
-      )}
 
       {gelleryItems.length > 0 && (
         <section className={styles.gallery_section}>

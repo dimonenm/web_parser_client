@@ -12,7 +12,15 @@ export interface IPost {
 }
 
 export interface IStatusData {
-  current: number;
-  total: number;
-  running: boolean;
+  id: string
+  running: boolean
+  current: number
+  total: number
+  scanned: number
+  round: number
+  lastShortCode: string | null
+  startedAt: number | null
+  finishedAt: number | null
+  elapsedMs: number
+  error: string | null
 }

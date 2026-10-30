@@ -469,8 +469,33 @@
   transition: opacity 0.2s;
 }
 
-.load_more:hover {
+.load_more:not(:disabled):hover {
   opacity: 0.9;
+}
+
+/* ===== PAGINATION: по 20 карточек на странице ===== */
+.pager {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 20px; /* отступ кнопок от цифр */
+}
+
+.pager_info {
+  font-size: 13px;
+  font-weight: 700; /* цифры полужирные */
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* неактивная страница: не кликается и не подсвечивается при наведении */
+.load_more:disabled {
+  opacity: 0.4;
+  filter: grayscale(0.6);
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 /* ===== LIGHTBOX: оригинал в истинном размере ===== */
@@ -632,4 +657,5 @@
     max-width: calc(100% - 32px);
     text-align: center;
   }
+
 }

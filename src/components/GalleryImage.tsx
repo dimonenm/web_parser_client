@@ -127,7 +127,7 @@ export function GalleryImage({ src, alt }: { src: string; alt: string }) {
         loading='lazy'
         referrerPolicy='no-referrer'
         draggable={false}
-        onDoubleClick={e => {
+        onClick={e => {
           e.preventDefault()
           e.stopPropagation()
           setOpened(true)

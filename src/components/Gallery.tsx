@@ -6,7 +6,7 @@ import { IGalleryItem } from '@/interfaces/instagram.interfaces'
 import { GalleryImage } from '@/components/GalleryImage'
 import styles from '@/app/page.module.css'
 
-const PAGE_SIZE = 20
+const PAGE_SIZE = 10
 
 // стабильная ссылка для дефолта — иначе effect сброса триггерится на каждый рендер
 const NO_ITEMS: IGalleryItem[] = []

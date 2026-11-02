@@ -123,7 +123,7 @@ export function GalleryImage({ src, alt }: { src: string; alt: string }) {
         className={styles.image}
         src={src}
         alt={alt}
-        title='Двойной клик — открыть'
+        title='Клик — открыть'
         loading='lazy'
         referrerPolicy='no-referrer'
         draggable={false}

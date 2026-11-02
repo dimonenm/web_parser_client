@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import styles from './page.module.css'
 import { GalleryImage } from '@/components/GalleryImage'
+import { IDownloadedPosts } from '@/interfaces/instagram.interfaces'
 
 interface IPost {
   type: 'p' | 'reel'
@@ -10,6 +11,7 @@ interface IPost {
   picUrls: string[]
 }
 
+const API = 'http://localhost:3000/instagram'
 const PAGE_SIZE = 12
 
 export default function Home() {
@@ -18,6 +20,7 @@ export default function Home() {
   const [posts, setPosts] = useState<IPost[]>([])
   const [error, setError] = useState('')
   const [visible, setVisible] = useState(PAGE_SIZE)
+  const [downloaded, setDownloaded] = useState<IDownloadedPosts[]>([])
 
   const galleryRef = useRef<HTMLDivElement>(null)
 
@@ -32,9 +35,8 @@ export default function Home() {
     }
   }
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault()
-    if (!query.trim()) return
+  const loadPosts = async (username: string) => {
+    if (!username) return
 
     setLoading(true)
     setError('')
@@ -43,7 +45,7 @@ export default function Home() {
 
     try {
       const response = await fetch(
-        `/api/instagram/get_all_pics/?id=${encodeURIComponent(extractUsername(query))}`,
+        `/api/instagram/get_all_pics/?id=${encodeURIComponent(username)}`,
         { cache: 'no-store' },
       )
       if (!response.ok) {
@@ -53,11 +55,54 @@ export default function Home() {
       const data = await response.json()
       setPosts(Array.isArray(data) ? data : [])
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка при загрузке данных')
+      setError(
+        err instanceof Error ? err.message : 'Ошибка при загрузке данных',
+      )
     } finally {
       setLoading(false)
     }
   }
+
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault()
+    void loadPosts(extractUsername(query))
+  }
+
+  // уже скачанные галереи — один раз при заходе на страницу
+  useEffect(() => {
+    const controller = new AbortController()
+
+    fetch(`${API}/get_all_downloaded_posts`, {
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+        return response.json()
+      })
+      .then((data: unknown) => {
+        // бэкенд отдаёт массив либо объект-обёртку
+        const raw = Array.isArray(data)
+          ? data
+          : (data as { posts?: unknown })?.posts
+        if (!Array.isArray(raw)) return
+
+        setDownloaded(
+          raw.filter(
+            (item): item is IDownloadedPosts =>
+              typeof (item as IDownloadedPosts | null)?.id === 'string',
+          ),
+        )
+      })
+      .catch(err => {
+        if (controller.signal.aborted) return
+        console.warn('get_all_downloaded_posts недоступен:', err)
+      })
+
+    return () => controller.abort()
+  }, [])
 
   useEffect(() => {
     if (posts.length && galleryRef.current) {
@@ -132,6 +177,51 @@ export default function Home() {
         )}
 
         {error && <p className={styles.error_text}>{error}</p>}
+
+        {/* Уже скачанные галереи — пока нет результатов поиска */}
+        {!posts.length && downloaded.length > 0 && (
+          <div className={styles.downloaded_block}>
+            <h2 className={styles.gallery_title}>
+              Уже скачано — {downloaded.length}
+            </h2>
+
+            <div className={styles.downloaded_grid}>
+              {downloaded.map(item => (
+                <button
+                  type='button'
+                  key={item.id}
+                  className={styles.downloaded_card}
+                  title={item.id}
+                  onClick={() => {
+                    setQuery(item.id)
+                    void loadPosts(item.id)
+                  }}
+                >
+                  {item.firstPicUrl ? (
+                    <img
+                      className={styles.downloaded_img}
+                      src={item.firstPicUrl}
+                      alt={item.id}
+                      loading='lazy'
+                      referrerPolicy='no-referrer'
+                      draggable={false}
+                      onError={e => {
+                        e.currentTarget.style.visibility = 'hidden'
+                      }}
+                    />
+                  ) : (
+                    <div
+                      className={`${styles.downloaded_img} ${styles.image_broken}`}
+                    >
+                      ⚠
+                    </div>
+                  )}
+                  <span className={styles.downloaded_title}>{item.id}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Gallery */}
@@ -145,7 +235,9 @@ export default function Home() {
             {posts.slice(0, visible).map(post => (
               <article key={post.shortCode} className={styles.card}>
                 <span className={styles.card_title}>
-                  {post.type === 'reel' && <span className={styles.reel_badge}>Reel</span>}
+                  {post.type === 'reel' && (
+                    <span className={styles.reel_badge}>Reel</span>
+                  )}
                   {post.shortCode}
                 </span>
 
@@ -176,4 +268,3 @@ export default function Home() {
     </div>
   )
 }
-

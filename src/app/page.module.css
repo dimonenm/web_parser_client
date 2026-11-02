@@ -577,6 +577,74 @@
   cursor: default;
 }
 
+/* ===== DOWNLOADED GALLERIES ===== */
+.downloaded_block {
+  width: 100%;
+  max-width: 1200px;
+  margin-top: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.downloaded_grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 200px);
+  justify-content: center;
+  gap: 16px;
+}
+
+.downloaded_card {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  padding: 0;
+  border: 1px solid var(--gradient-start);
+  border-radius: 12px;
+  overflow: hidden;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.downloaded_card:hover {
+  border-color: var(--gradient-end);
+}
+
+.downloaded_img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 0;
+  background-color: #2b2b2b;
+}
+
+/* ⚠ для битой/отсутствующей превьюшки */
+.downloaded_img_broken {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  color: var(--text-secondary);
+}
+
+.downloaded_title {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ===== RESPONSIVE ===== */
 @media (max-width: 768px) {
   .gallery_section {
@@ -657,5 +725,4 @@
     max-width: calc(100% - 32px);
     text-align: center;
   }
-
 }

@@ -11,6 +11,11 @@ export interface IPost {
   picUrls: string[];
 }
 
+export interface IDownloadedPosts {
+  id: string
+  firstPicUrl: string
+}
+
 export interface IStatusData {
   id: string
   running: boolean

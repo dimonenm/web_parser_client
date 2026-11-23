@@ -3,16 +3,45 @@
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import styles from './page.module.css'
 import { GalleryImage } from '@/components/GalleryImage'
-import { IDownloadedPosts } from '@/interfaces/instagram.interfaces'
-
-interface IPost {
-  type: 'p' | 'reel'
-  shortCode: string
-  picUrls: string[]
-}
+import { IDownloadedPosts, IPost } from '@/interfaces/instagram.interfaces'
 
 const API = 'http://localhost:3000/instagram'
 const PAGE_SIZE = 12
+
+// 'search' — прогон парсера по id профиля, 'downloaded' — готовый файл на диске
+type GallerySource = 'search' | 'downloaded'
+
+// бэкенд отдаёт JSON.stringify(posts) — на всякий случай разворачиваем строку
+const unwrapJson = (data: unknown): unknown => {
+  let value = data
+  for (let i = 0; i < 2 && typeof value === 'string'; i++) {
+    try {
+      value = JSON.parse(value)
+    } catch {
+      return null
+    }
+  }
+  return value
+}
+
+const parsePosts = (data: unknown): IPost[] => {
+  const source = unwrapJson(data)
+  const raw = Array.isArray(source)
+    ? source
+    : (source as { posts?: unknown })?.posts
+  if (!Array.isArray(raw)) return []
+
+  return raw
+    .filter((item): item is IPost => {
+      const post = item as Partial<IPost> | null
+      return typeof post?.shortCode === 'string' && post.shortCode.length > 0
+    })
+    .map(post => ({
+      type: typeof post.type === 'string' ? post.type : 'p',
+      shortCode: post.shortCode,
+      picUrls: Array.isArray(post.picUrls) ? post.picUrls : [],
+    }))
+}
 
 export default function Home() {
   const [query, setQuery] = useState('')
@@ -21,8 +50,10 @@ export default function Home() {
   const [error, setError] = useState('')
   const [visible, setVisible] = useState(PAGE_SIZE)
   const [downloaded, setDownloaded] = useState<IDownloadedPosts[]>([])
+  const [source, setSource] = useState<GallerySource>('search')
 
   const galleryRef = useRef<HTMLDivElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   const extractUsername = (value: string): string => {
     const trimmed = value.trim()
@@ -35,37 +66,63 @@ export default function Home() {
     }
   }
 
-  const loadPosts = async (username: string) => {
+  // Единая точка входа для галереи: и поиск, и клик по уже скачанной плитке
+  const loadGallery = async (username: string, from: GallerySource) => {
     if (!username) return
 
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
     setLoading(true)
+    setSource(from)
     setError('')
     setPosts([])
     setVisible(PAGE_SIZE)
 
+    // скачанное читаем с диска — это мгновенно и не трогает парсер
+    const url =
+      from === 'downloaded'
+        ? `${API}/get_downloaded_posts?id=${encodeURIComponent(username)}`
+        : `/api/instagram/get_all_pics/?id=${encodeURIComponent(username)}`
+
     try {
-      const response = await fetch(
-        `/api/instagram/get_all_pics/?id=${encodeURIComponent(username)}`,
-        { cache: 'no-store' },
-      )
+      const response = await fetch(url, {
+        cache: 'no-store',
+        signal: controller.signal,
+      })
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
 
-      const data = await response.json()
-      setPosts(Array.isArray(data) ? data : [])
+      const list = parsePosts(await response.json())
+
+      if (!list.length) {
+        setError(
+          from === 'downloaded'
+            ? 'В скачанной галерее нет постов'
+            : 'Бэкенд вернул пустой список постов',
+        )
+        return
+      }
+
+      setPosts(list)
     } catch (err) {
+      if (controller.signal.aborted) return
       setError(
         err instanceof Error ? err.message : 'Ошибка при загрузке данных',
       )
     } finally {
-      setLoading(false)
+      if (abortRef.current === controller) {
+        abortRef.current = null
+        setLoading(false)
+      }
     }
   }
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
-    void loadPosts(extractUsername(query))
+    void loadGallery(extractUsername(query), 'search')
   }
 
   // уже скачанные галереи — один раз при заходе на страницу
@@ -109,6 +166,9 @@ export default function Home() {
       galleryRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
   }, [posts])
+
+  // уход со страницы — отменяем незавершённый запрос
+  useEffect(() => () => abortRef.current?.abort(), [])
 
   return (
     <div className={styles.container}>
@@ -171,7 +231,9 @@ export default function Home() {
           <div className={styles.loading}>
             <span className={styles.spinner} />
             <span className={styles.loading_text}>
-              Собираем фото… это может занять несколько минут
+              {source === 'downloaded'
+                ? 'Открываем скачанную галерею…'
+                : 'Собираем фото… это может занять несколько минут'}
             </span>
           </div>
         )}
@@ -192,9 +254,10 @@ export default function Home() {
                   key={item.id}
                   className={styles.downloaded_card}
                   title={item.id}
+                  disabled={loading}
                   onClick={() => {
                     setQuery(item.id)
-                    void loadPosts(item.id)
+                    void loadGallery(item.id, 'downloaded')
                   }}
                 >
                   {item.firstPicUrl ? (
@@ -242,13 +305,19 @@ export default function Home() {
                 </span>
 
                 <div className={styles.images}>
-                  {post.picUrls.map((url, i) => (
-                    <GalleryImage
-                      key={`${post.shortCode}_${i}`}
-                      src={url}
-                      alt={`${post.shortCode} — ${i + 1}`}
-                    />
-                  ))}
+                  {post.picUrls.length ? (
+                    post.picUrls.map((url, i) => (
+                      <GalleryImage
+                        key={`${post.shortCode}_${i}`}
+                        src={url}
+                        alt={`${post.shortCode} — ${i + 1}`}
+                      />
+                    ))
+                  ) : (
+                    <div className={`${styles.image} ${styles.image_broken}`}>
+                      ⚠
+                    </div>
+                  )}
                 </div>
               </article>
             ))}

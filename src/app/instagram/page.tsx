@@ -83,9 +83,8 @@ export default function InstagramGelleryPage() {
 
   // ===== обработчики =====
 
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    const username = query.trim()
+  // общий запуск: и из формы, и по ?id=, прилетевшему с главной
+  const loadGallery = async (username: string) => {
     if (!username) return
 
     abortRef.current?.abort()
@@ -170,6 +169,11 @@ export default function InstagramGelleryPage() {
     }
   }
 
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    await loadGallery(query.trim())
+  }
+
   // открываем системный диалог выбора файла
   const handleDownloadFile = () => {
     if (loading) return
@@ -213,6 +217,16 @@ export default function InstagramGelleryPage() {
       setDownloading(false)
     }
   }
+
+  // /instagram?id=nasa — открываем галерею сразу, без клика по Search
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('id')?.trim()
+    if (!id) return
+
+    setQuery(id)
+    void loadGallery(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // уход со страницы — отменяем незавершённые запросы
   useEffect(() => () => abortRef.current?.abort(), [])

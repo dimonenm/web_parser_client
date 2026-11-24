@@ -83,8 +83,10 @@ export default function InstagramGelleryPage() {
 
   // ===== обработчики =====
 
-  // общий запуск: и из формы, и по ?id=, прилетевшему с главной
-  const loadGallery = async (username: string) => {
+  // общий запуск: и из формы, и по ?id=, прилетевшему с главной,
+  // и построчный прогон id из файла
+  // append=true — дописываем посты к уже показанным, а не затираем галерею
+  const loadGallery = async (username: string, append = false) => {
     if (!username) return
 
     abortRef.current?.abort()
@@ -93,7 +95,7 @@ export default function InstagramGelleryPage() {
 
     setLoading(true)
     setError('')
-    setGelleryItems([])
+    setGelleryItems(prev => (append ? prev : []))
     setStatus(null)
 
     try {
@@ -106,7 +108,7 @@ export default function InstagramGelleryPage() {
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`)
         }
-        return parsePosts(await response.json())
+        return parsePosts(await response.json()).map(post => ({ ...post, username }))
       })
 
       // страхуем от unhandled rejection на время поллинга:
@@ -151,11 +153,19 @@ export default function InstagramGelleryPage() {
       }
 
       if (!posts.length) {
-        setError('Бэкенд вернул пустой список постов')
+        // при пакетном прогоне пустой профиль не должен стирать уже собранное
+        if (!append) setError('Бэкенд вернул пустой список постов')
+        else console.warn(`Нет постов для: ${username}`)
         return
       }
 
-      setGelleryItems(posts)
+      setGelleryItems(prev => {
+        if (!append) return posts
+
+        // переиндексируем, чтобы ключи/номера в галерее не дублировались
+        const offset = prev.length
+        return [...prev, ...posts.map((post, i) => ({ ...post, index: offset + i }))]
+      })
     } catch (err) {
       if (controller.signal.aborted) return
       setError(
@@ -191,26 +201,34 @@ export default function InstagramGelleryPage() {
     setDownloading(false)
   }
 
-  // читаем выбранный файл и подставляем id в поле поиска
+  // читаем id из файла построчно и прогоняем каждый через loadGallery
   const handleFileChosen = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     e.target.value = '' // сброс, чтобы повторный выбор того же файла снова сработал
     if (!file) return
 
-    setDownloading(true)
     setError('')
 
     try {
       const text = await file.text()
-      const id =
-        text
-          .split(/\r?\n/)
-          .map(line => line.trim())
-          .find(Boolean) ?? ''
+      const ids = text
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean)
 
-      if (!id) throw new Error('В файле нет данных')
+      if (!ids.length) throw new Error('В файле нет id')
 
-      setQuery(id)
+      setDownloading(true)
+
+      for (let i = 0; i < ids.length; i++) {
+        const id = ids[i]
+        console.log(`[${i + 1}/${ids.length}] Загружаем: ${id}`)
+
+        setQuery(id)
+        await loadGallery(id, i > 0)
+      }
+
+      console.log('Обработка файла завершена')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось прочитать файл')
     } finally {
@@ -377,9 +395,9 @@ export default function InstagramGelleryPage() {
                 {percent}% · осталось ~
                 {status.running && status.current > 0
                   ? formatDuration(
-                      ((status.total - status.current) / status.current) *
-                        status.elapsedMs,
-                    )
+                    ((status.total - status.current) / status.current) *
+                    status.elapsedMs,
+                  )
                   : '—'}
               </span>
             </div>
@@ -390,9 +408,7 @@ export default function InstagramGelleryPage() {
       </main>
 
       {gelleryItems.length > 0 && (
-        <section className={styles.gallery_section}>
-          <Gallery items={gelleryItems} username={query} />
-        </section>
+        <Gallery items={gelleryItems} username={query} />
       )}
     </div>
   )

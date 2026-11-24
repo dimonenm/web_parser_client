@@ -1,14 +1,15 @@
 export interface IGalleryItem {
-  type: string;
-  shortCode: string;
-  picUrls: string[];
-  index: number; // позиция якоря в сетке, чтобы кликнуть по нему позже
+  type: string
+  shortCode: string
+  picUrls: string[]
+  index: number // позиция якоря в сетке, чтобы кликнуть по нему позже
+  username?: string // id профиля, для группировки при пакетной загрузке
 }
 
 export interface IPost {
-  type: string;
-  shortCode: string;
-  picUrls: string[];
+  type: string
+  shortCode: string
+  picUrls: string[]
 }
 
 export interface IDownloadedPosts {

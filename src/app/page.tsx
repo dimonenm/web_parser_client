@@ -51,6 +51,7 @@ export default function Home() {
   const [visible, setVisible] = useState(PAGE_SIZE)
   const [downloaded, setDownloaded] = useState<IDownloadedPosts[]>([])
   const [source, setSource] = useState<GallerySource>('search')
+  const [deleting, setDeleting] = useState('')
 
   const galleryRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -123,6 +124,37 @@ export default function Home() {
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
     void loadGallery(extractUsername(query), 'search')
+  }
+
+  // удаляем файл галереи с диска и убираем плитку из списка
+  const deleteDownloaded = async (id: string) => {
+    if (!window.confirm(`Удалить скачанную галерею «${id}» с диска?`)) return
+
+    setDeleting(id)
+    setError('')
+
+    try {
+      const response = await fetch(
+        `${API}/delete_downloaded_posts?id=${encodeURIComponent(id)}`,
+        { method: 'DELETE' },
+      )
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      setDownloaded(list => list.filter(item => item.id !== id))
+
+      // удалили ту же галерею, что открыта прямо сейчас — сворачиваем её
+      if (source === 'downloaded' && extractUsername(query) === id) {
+        setPosts([])
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Не удалось удалить галерею',
+      )
+    } finally {
+      setDeleting('')
+    }
   }
 
   // уже скачанные галереи — один раз при заходе на страницу
@@ -249,38 +281,56 @@ export default function Home() {
 
             <div className={styles.downloaded_grid}>
               {downloaded.map(item => (
-                <button
-                  type='button'
+                <div
                   key={item.id}
                   className={styles.downloaded_card}
                   title={item.id}
-                  disabled={loading}
-                  onClick={() => {
-                    setQuery(item.id)
-                    void loadGallery(item.id, 'downloaded')
-                  }}
                 >
-                  {item.firstPicUrl ? (
-                    <img
-                      className={styles.downloaded_img}
-                      src={item.firstPicUrl}
-                      alt={item.id}
-                      loading='lazy'
-                      referrerPolicy='no-referrer'
-                      draggable={false}
-                      onError={e => {
-                        e.currentTarget.style.visibility = 'hidden'
-                      }}
-                    />
-                  ) : (
-                    <div
-                      className={`${styles.downloaded_img} ${styles.image_broken}`}
-                    >
-                      ⚠
-                    </div>
-                  )}
-                  <span className={styles.downloaded_title}>{item.id}</span>
-                </button>
+                  <button
+                    type='button'
+                    className={styles.downloaded_open}
+                    disabled={loading}
+                    onClick={() => {
+                      setQuery(item.id)
+                      void loadGallery(item.id, 'downloaded')
+                    }}
+                  >
+                    {item.firstPicUrl ? (
+                      <img
+                        className={styles.downloaded_img}
+                        src={item.firstPicUrl}
+                        alt={item.id}
+                        loading='lazy'
+                        referrerPolicy='no-referrer'
+                        draggable={false}
+                        onError={e => {
+                          e.currentTarget.style.visibility = 'hidden'
+                        }}
+                      />
+                    ) : (
+                      <div
+                        className={`${styles.downloaded_img} ${styles.image_broken}`}
+                      >
+                        ⚠
+                      </div>
+                    )}
+                    <span className={styles.downloaded_title}>{item.id}</span>
+                  </button>
+
+                  <button
+                    type='button'
+                    className={styles.downloaded_delete}
+                    title={`Удалить ${item.id} с диска`}
+                    aria-label={`Удалить ${item.id} с диска`}
+                    disabled={deleting === item.id}
+                    onClick={e => {
+                      e.stopPropagation()
+                      void deleteDownloaded(item.id)
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
               ))}
             </div>
           </div>

@@ -606,12 +606,62 @@
   overflow: hidden;
   background: transparent;
   font: inherit;
-  cursor: pointer;
   transition: border-color 0.2s ease;
 }
 
 .downloaded_card:hover {
   border-color: var(--gradient-end);
+}
+
+/* плитка целиком — подложка, клик по ней открывает галерею */
+.downloaded_open {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* крест в правом верхнем углу — появляется при наведении */
+.downloaded_delete {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.downloaded_card:hover .downloaded_delete,
+.downloaded_delete:focus-visible {
+  opacity: 1;
+}
+
+.downloaded_delete:hover {
+  background: #e0344a;
+}
+
+.downloaded_delete:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .downloaded_img {

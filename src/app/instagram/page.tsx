@@ -2,7 +2,6 @@
 
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
 import { BatchProgress } from '@/components/BatchProgress'
-import { Gallery } from '@/components/Gallery'
 
 import styles from '../page.module.css'
 import {
@@ -55,7 +54,6 @@ export default function InstagramGelleryPage() {
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
   const [downloading, setDownloading] = useState(false)
-  const [gelleryItems, setGelleryItems] = useState<IGalleryItem[]>([])
   const [tasks, setTasks] = useState<IBatchTask[]>([])
   const [status, setStatus] = useState<IStatusData | null>(null)
   const [error, setError] = useState('')
@@ -123,7 +121,6 @@ export default function InstagramGelleryPage() {
 
     setLoading(true)
     setError('')
-    setGelleryItems(prev => (append ? prev : []))
     setStatus(null)
 
     try {
@@ -253,17 +250,6 @@ export default function InstagramGelleryPage() {
         return
       }
 
-      setGelleryItems(prev => {
-        if (!append) return posts
-
-        // переиндексируем, чтобы ключи/номера в галерее не дублировались
-        const offset = prev.length
-        return [
-          ...prev,
-          ...posts.map((post, i) => ({ ...post, index: offset + i })),
-        ]
-      })
-
       if (taskIndex !== undefined) {
         updateTask(taskIndex, {
           state: 'success',
@@ -311,7 +297,6 @@ export default function InstagramGelleryPage() {
     abortRef.current?.abort()
     abortRef.current = null
     setQuery('')
-    setGelleryItems([])
     setTasks([])
     setStatus(null)
     setError('')
@@ -412,7 +397,7 @@ export default function InstagramGelleryPage() {
 
       {/* Main Content */}
       <main
-        className={`${styles.main_content} ${gelleryItems.length || tasks.length ? styles.main_content_top : ''}`}
+        className={`${styles.main_content} ${tasks.length ? styles.main_content_top : ''}`}
       >
         <h1 className={styles.title}>Instagram short codes</h1>
         <p className={styles.subtitle}>
@@ -546,10 +531,6 @@ export default function InstagramGelleryPage() {
 
         {error && <p className={styles.error_text}>{error}</p>}
       </main>
-
-      {gelleryItems.length > 0 && (
-        <Gallery items={gelleryItems} username={query} />
-      )}
     </div>
   )
 }

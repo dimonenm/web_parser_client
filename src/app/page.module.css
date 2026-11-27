@@ -777,3 +777,87 @@
     text-align: center;
   }
 }
+
+/* ===== BATCH PROGRESS: строки id из загруженного файла ===== */
+.batch_progress {
+  width: 100%;
+  max-width: 600px; /* как у .search_form */
+  margin: 28px auto 0; /* отступ от формы, как у .loading */
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  text-align: left; /* main центрирует текст — строки прижимаем влево */
+}
+
+.batch_row {
+  display: grid;
+  grid-template-columns: 24px minmax(120px, 1.1fr) 88px minmax(120px, 2fr) 56px 88px 24px;
+  align-items: center;
+  gap: 14px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.batch_index {
+  text-align: right;
+}
+
+.batch_id {
+  color: var(--text-primary);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.batch_counts,
+.batch_percent,
+.batch_time {
+  white-space: nowrap;
+}
+
+.batch_percent,
+.batch_time {
+  text-align: right;
+}
+
+.batch_icon {
+  width: 18px;
+  height: 18px;
+  justify-self: end;
+}
+
+.batch_icon_success {
+  color: #4ade80;
+}
+
+.batch_icon_error {
+  color: #f87171;
+}
+
+.batch_icon_pending {
+  justify-self: end;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #4c4c4c;
+  border-radius: 50%;
+}
+
+.batch_row .spinner {
+  justify-self: end;
+  width: 16px;
+  height: 16px;
+}
+
+@media (max-width: 768px) {
+  .batch_row {
+    grid-template-columns: 20px minmax(72px, 1fr) 64px minmax(72px, 1.4fr) 44px 24px;
+    gap: 8px;
+    font-size: 12px;
+  }
+
+  .batch_time {
+    display: none;
+  }
+}

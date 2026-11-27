@@ -1,3 +1,16 @@
+export type TBatchTaskState = 'pending' | 'running' | 'success' | 'error'
+
+export interface IBatchTask {
+  index: number // номер строки в файле, с 1
+  id: string
+  state: TBatchTaskState
+  current: number
+  total: number
+  elapsedMs: number
+  postsCount: number
+  error: string | null
+}
+
 export interface IGalleryItem {
   type: string
   shortCode: string

@@ -1,14 +1,17 @@
 'use client'
 
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
+import { BatchProgress } from '@/components/BatchProgress'
 import { Gallery } from '@/components/Gallery'
 
 import styles from '../page.module.css'
 import {
+  IBatchTask,
   IGalleryItem,
   IPost,
   IStatusData,
 } from '@/interfaces/instagram.interfaces'
+import { formatDuration } from '@/utils/format'
 
 const API = 'http://localhost:3000/instagram'
 const POLL_INTERVAL = 2000
@@ -27,9 +30,6 @@ const unwrapJson = (data: unknown): unknown => {
   }
   return value
 }
-
-const formatDuration = (ms: number): string =>
-  `${Math.floor(ms / 60_000)}м ${String(Math.round((ms % 60_000) / 1000)).padStart(2, '0')}с`
 
 const parsePosts = (data: unknown): IGalleryItem[] => {
   const source = unwrapJson(data)
@@ -56,11 +56,22 @@ export default function InstagramGelleryPage() {
   const [loading, setLoading] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [gelleryItems, setGelleryItems] = useState<IGalleryItem[]>([])
+  const [tasks, setTasks] = useState<IBatchTask[]>([])
   const [status, setStatus] = useState<IStatusData | null>(null)
   const [error, setError] = useState('')
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  // номер пакетного прогона: Clear или новый поиск останавливает старый цикл файла
+  const batchRunRef = useRef(0)
+
+  const updateTask = (taskIndex: number, patch: Partial<IBatchTask>) => {
+    setTasks(prev =>
+      prev.map(task =>
+        task.index === taskIndex ? { ...task, ...patch } : task,
+      ),
+    )
+  }
 
   // GET {API}/get_posts_status → IStatusData
   const fetchStatus = async (
@@ -86,12 +97,29 @@ export default function InstagramGelleryPage() {
   // общий запуск: и из формы, и по ?id=, прилетевшему с главной,
   // и построчный прогон id из файла
   // append=true — дописываем посты к уже показанным, а не затираем галерею
-  const loadGallery = async (username: string, append = false) => {
+  // taskIndex — номер строки в файле, к которой относится этот запуск
+  const loadGallery = async (
+    username: string,
+    append = false,
+    taskIndex?: number,
+  ) => {
     if (!username) return
+
+    // одиночный запуск отменяет пакетный прогон файла
+    if (taskIndex === undefined) {
+      batchRunRef.current += 1
+      setTasks([])
+    }
 
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
+
+    const taskStartedAt = Date.now()
+
+    if (taskIndex !== undefined) {
+      updateTask(taskIndex, { state: 'running', error: null })
+    }
 
     setLoading(true)
     setError('')
@@ -108,7 +136,10 @@ export default function InstagramGelleryPage() {
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`)
         }
-        return parsePosts(await response.json()).map(post => ({ ...post, username }))
+        return parsePosts(await response.json()).map(post => ({
+          ...post,
+          username,
+        }))
       })
 
       // страхуем от unhandled rejection на время поллинга:
@@ -127,9 +158,22 @@ export default function InstagramGelleryPage() {
 
       // 2) параллельно опрашиваем прогресс. Это косметика —
       //    ронять загрузку галереи из-за него нельзя
+      let latest: IStatusData | null = null
+
       try {
         const deadline = Date.now() + POLL_TIMEOUT
         let current = await fetchStatus(controller.signal, username)
+
+        if (current.id === username) {
+          latest = current
+          if (taskIndex !== undefined) {
+            updateTask(taskIndex, {
+              current: current.current,
+              total: current.total,
+              elapsedMs: current.elapsedMs,
+            })
+          }
+        }
 
         while (!arrived && Date.now() < deadline) {
           // наш прогон завершился — дальше ждать смысла нет
@@ -138,6 +182,17 @@ export default function InstagramGelleryPage() {
           await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL))
           if (controller.signal.aborted) return
           current = await fetchStatus(controller.signal, username)
+
+          if (current.id === username) {
+            latest = current
+            if (taskIndex !== undefined) {
+              updateTask(taskIndex, {
+                current: current.current,
+                total: current.total,
+                elapsedMs: current.elapsedMs,
+              })
+            }
+          }
         }
       } catch (err) {
         if (controller.signal.aborted) return
@@ -147,8 +202,28 @@ export default function InstagramGelleryPage() {
       // 3) вот здесь дожидаемся реального ответа с постами
       const posts = await postsPromise
 
-      if (status?.error) {
-        setError(`Бэкенд: ${status.error}`)
+      // после ответа статус уже финальный — забираем его для строки прогресса
+      let finalStatus = latest
+      if (!controller.signal.aborted) {
+        try {
+          const data = await fetchStatus(controller.signal, username)
+          if (data.id === username) finalStatus = data
+        } catch {
+          // статус — косметика, ошибку загрузки постов он не отменяет
+        }
+      }
+
+      if (finalStatus?.error) {
+        setError(`Бэкенд: ${finalStatus.error}`)
+        if (taskIndex !== undefined) {
+          updateTask(taskIndex, {
+            state: 'error',
+            error: finalStatus.error,
+            current: finalStatus.current,
+            total: finalStatus.total,
+            elapsedMs: finalStatus.elapsedMs || Date.now() - taskStartedAt,
+          })
+        }
         return
       }
 
@@ -156,6 +231,25 @@ export default function InstagramGelleryPage() {
         // при пакетном прогоне пустой профиль не должен стирать уже собранное
         if (!append) setError('Бэкенд вернул пустой список постов')
         else console.warn(`Нет постов для: ${username}`)
+
+        if (taskIndex !== undefined) {
+          // 0 постов — это не успех: страница профиля не загрузилась
+          // (ERR_QUIC_PROTOCOL_ERROR, селектор поста не найден и т.п.)
+          const message =
+            finalStatus?.error ??
+            (finalStatus?.total === 0
+              ? 'Профиль не загрузился: 0 постов из 0'
+              : `Не собрано ни одного поста из ${finalStatus?.total ?? 0}`)
+
+          updateTask(taskIndex, {
+            state: 'error',
+            error: message,
+            current: 0,
+            total: finalStatus?.total ?? 0,
+            elapsedMs: finalStatus?.elapsedMs || Date.now() - taskStartedAt,
+            postsCount: 0,
+          })
+        }
         return
       }
 
@@ -164,13 +258,35 @@ export default function InstagramGelleryPage() {
 
         // переиндексируем, чтобы ключи/номера в галерее не дублировались
         const offset = prev.length
-        return [...prev, ...posts.map((post, i) => ({ ...post, index: offset + i }))]
+        return [
+          ...prev,
+          ...posts.map((post, i) => ({ ...post, index: offset + i })),
+        ]
       })
+
+      if (taskIndex !== undefined) {
+        updateTask(taskIndex, {
+          state: 'success',
+          current: posts.length,
+          total: finalStatus?.total || posts.length,
+          elapsedMs: finalStatus?.elapsedMs || Date.now() - taskStartedAt,
+          postsCount: posts.length,
+        })
+      }
     } catch (err) {
       if (controller.signal.aborted) return
-      setError(
-        err instanceof Error ? err.message : 'Ошибка при загрузке данных',
-      )
+
+      const message =
+        err instanceof Error ? err.message : 'Ошибка при загрузке данных'
+      setError(message)
+
+      if (taskIndex !== undefined) {
+        updateTask(taskIndex, {
+          state: 'error',
+          error: message,
+          elapsedMs: Date.now() - taskStartedAt,
+        })
+      }
     } finally {
       if (abortRef.current === controller) {
         abortRef.current = null
@@ -191,10 +307,12 @@ export default function InstagramGelleryPage() {
   }
 
   const handleClear = () => {
+    batchRunRef.current += 1
     abortRef.current?.abort()
     abortRef.current = null
     setQuery('')
     setGelleryItems([])
+    setTasks([])
     setStatus(null)
     setError('')
     setLoading(false)
@@ -218,14 +336,33 @@ export default function InstagramGelleryPage() {
 
       if (!ids.length) throw new Error('В файле нет id')
 
+      const runId = ++batchRunRef.current
+
+      // сразу показываем все строки файла, ещё до старта обработки
+      setTasks(
+        ids.map((id, i) => ({
+          index: i + 1,
+          id,
+          state: 'pending',
+          current: 0,
+          total: 0,
+          elapsedMs: 0,
+          postsCount: 0,
+          error: null,
+        })),
+      )
+
       setDownloading(true)
 
       for (let i = 0; i < ids.length; i++) {
+        // Clear или новый поиск прервал этот пакетный прогон
+        if (batchRunRef.current !== runId) break
+
         const id = ids[i]
         console.log(`[${i + 1}/${ids.length}] Загружаем: ${id}`)
 
         setQuery(id)
-        await loadGallery(id, i > 0)
+        await loadGallery(id, i > 0, i + 1)
       }
 
       console.log('Обработка файла завершена')
@@ -275,7 +412,7 @@ export default function InstagramGelleryPage() {
 
       {/* Main Content */}
       <main
-        className={`${styles.main_content} ${gelleryItems.length ? styles.main_content_top : ''}`}
+        className={`${styles.main_content} ${gelleryItems.length || tasks.length ? styles.main_content_top : ''}`}
       >
         <h1 className={styles.title}>Instagram short codes</h1>
         <p className={styles.subtitle}>
@@ -364,8 +501,11 @@ export default function InstagramGelleryPage() {
           </button>
         </form>
 
-        {/* Индикатор и ошибки — ВНУТРИ main, сразу после формы */}
-        {loading && status && (
+        {/* Пакетный прогресс по id из файла — сразу под формой */}
+        {tasks.length > 0 && <BatchProgress tasks={tasks} />}
+
+        {/* Одиночный индикатор — только когда нет пакетного списка */}
+        {loading && status && tasks.length === 0 && (
           <div className={`${styles.loading} ${styles.loading_column}`}>
             <div className={styles.loading_row}>
               <span className={styles.spinner} />
@@ -395,9 +535,9 @@ export default function InstagramGelleryPage() {
                 {percent}% · осталось ~
                 {status.running && status.current > 0
                   ? formatDuration(
-                    ((status.total - status.current) / status.current) *
-                    status.elapsedMs,
-                  )
+                      ((status.total - status.current) / status.current) *
+                        status.elapsedMs,
+                    )
                   : '—'}
               </span>
             </div>
